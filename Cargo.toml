@@ -1,0 +1,11 @@
+[package]
+name = "NVIDIA_FrameView_GUI"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+csv = "1.4.0"
+serde = { version = "1.0.229", features = ["default"] }
+plotters = "0.3.7"
+rfd = "0.14"
+eframe = "0.35.0"
