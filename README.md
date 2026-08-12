@@ -139,5 +139,4 @@ FrameView 是 NVIDIA 的免费性能采集工具，详见 <https://www.nvidia.co
 ---
 
 ## License / 许可证
-
-无（个人/学习项目）。
+MIT
