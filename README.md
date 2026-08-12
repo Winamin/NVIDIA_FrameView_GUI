@@ -7,6 +7,7 @@ An **NVIDIA FrameView** capture-log analyzer built with **Rust + plotters + egui
 it parses FrameView CSV logs, renders 6 charts, and ships an interactive GUI with
 live parameters, animation, and zoom.
 
+![image](/arts/1.png)
 ---
 
 ## Features / 功能
