@@ -122,6 +122,7 @@ impl ChartApp {
             cpu: String::new(),
             resolution: String::new(),
             runtime: String::new(),
+            gpu_count: 0,
             frames: Vec::new(),
         };
         match load_csv(&path, &mut sess) {
@@ -252,10 +253,7 @@ impl ChartApp {
         if ui.button("Save current chart as PNG").clicked() {
             self.save_png();
         }
-        if ui.button("Load another CSV…").clicked() {
-            self.load_new_csv();
-        }
-
+        if ui.button("Load another CSV").clicked() { self.load_new_csv(); }
         if !self.status.is_empty() {
             ui.separator();
             ui.label(&self.status);
