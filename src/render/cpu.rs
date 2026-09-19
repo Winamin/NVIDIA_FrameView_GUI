@@ -3,7 +3,7 @@
 use std::error::Error;
 
 use crate::model::*;
-use super::{core_color, draw_panel, make_series, padded_range, DArea, PanelOptions, RenderParams, Series};
+use super::{core_color, draw_panel, make_series, padded_range, time_range, DArea, PanelOptions, RenderParams, Series};
 
 pub fn render_cpu_area(
     sess: &Session,
@@ -11,8 +11,7 @@ pub fn render_cpu_area(
     params: &RenderParams,
     area: &DArea<'_>,
 ) -> Result<(), Box<dyn Error>> {
-    let t0 = sess.frames[0].time_s;
-    let t1 = sess.frames[sess.frames.len() - 1].time_s;
+    let (t0, t1) = time_range(sess);
 
     /* How many cores actually have data in this capture. */
     let mut cores = 0usize;

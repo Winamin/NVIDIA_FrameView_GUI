@@ -153,7 +153,9 @@ pub fn make_series<F: Fn(&FrameSample) -> f32>(
     let mut max_pt: Option<(f32, f32)> = None;
     for f in &sess.frames {
         let v = select(f);
-        if v.is_finite() {
+        // A non-finite timestamp would map to a bogus x pixel, so the sample is
+        // dropped rather than drawn at the axis origin.
+        if v.is_finite() && f.time_s.is_finite() {
             let p = (f.time_s, v);
             full.push(p);
             if min_pt.map_or(true, |m| v < m.1) {
@@ -194,15 +196,66 @@ pub fn series_minmax(list: &[&Series]) -> Option<(f32, f32)> {
     }
 }
 
+/// Axis range used when the data gives us nothing plottable.
+const FALLBACK_RANGE: (f32, f32) = (0.0, 1.0);
+
+/// Sanitizes an axis range before it reaches plotters.
+///
+/// plotters asserts that neither end of a numeric axis is NaN (see
+/// `compute_f32_key_points`) and its key-point search never terminates on an
+/// infinite span. A capture can produce both: a missing or blank cell parses to
+/// `NaN`, and values from opposite ends of the f32 range make `hi - lo`
+/// overflow. Non-finite input falls back to `0..1`; a reversed range is
+/// flipped and a zero-width one is widened so the chart still gets a real axis.
+pub fn axis_range(lo: f32, hi: f32) -> (f32, f32) {
+    if !lo.is_finite() || !hi.is_finite() {
+        return FALLBACK_RANGE;
+    }
+    let (lo, hi) = (lo.min(hi), lo.max(hi));
+    if !(hi - lo).is_finite() {
+        return FALLBACK_RANGE;
+    }
+    // Same degenerate test plotters uses, where it would collapse the axis to a
+    // single key point.
+    if (hi as f64 - lo as f64) < f64::EPSILON {
+        return (lo - 1.0, lo + 1.0);
+    }
+    (lo, hi)
+}
+
+/// The capture's time span, taken from finite `time_s` values only.
+///
+/// A row can carry `NaN` time — a blank cell, or a log truncated mid-write —
+/// and the first or last row is exactly where that lands, so reading
+/// `frames[0]` and `frames[len - 1]` directly is what handed plotters a
+/// `NaN..NaN` x axis.
+pub fn time_range(sess: &Session) -> (f32, f32) {
+    let mut lo = f32::MAX;
+    let mut hi = f32::MIN;
+    let mut any = false;
+    for f in &sess.frames {
+        if f.time_s.is_finite() {
+            any = true;
+            lo = lo.min(f.time_s);
+            hi = hi.max(f.time_s);
+        }
+    }
+    if any {
+        axis_range(lo, hi)
+    } else {
+        FALLBACK_RANGE
+    }
+}
+
 /// A data-driven y range with `pad` * span of padding on each side.
 pub fn padded_range(list: &[&Series], pad: f32) -> (f32, f32) {
     match series_minmax(list) {
         Some((lo, hi)) if hi > lo => {
             let span = hi - lo;
-            (lo - span * pad, hi + span * pad)
+            axis_range(lo - span * pad, hi + span * pad)
         }
-        Some((v, _)) => (v - 1.0, v + 1.0),
-        None => (0.0, 1.0),
+        Some((v, _)) => axis_range(v - 1.0, v + 1.0),
+        None => FALLBACK_RANGE,
     }
 }
 

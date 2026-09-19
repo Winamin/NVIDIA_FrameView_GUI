@@ -4,7 +4,7 @@ use std::error::Error;
 use plotters::prelude::*;
 
 use crate::model::*;
-use super::{clamp_pts, draw_label_at, draw_text, downsample, sweep_cut, BucketMode, DArea, RenderParams};
+use super::{axis_range, clamp_pts, draw_label_at, draw_text, downsample, sweep_cut, BucketMode, DArea, RenderParams};
 
 pub fn render_frame_time_area(
     sess: &Session,
@@ -14,15 +14,12 @@ pub fn render_frame_time_area(
 ) -> Result<(), Box<dyn Error>> {
     let mut pts: Vec<(f32, f32)> = Vec::with_capacity(sess.frames.len());
     for f in &sess.frames {
-        if f.frame_ms > 0.0 {
+        if f.frame_ms > 0.0 && f.time_s.is_finite() {
             pts.push((f.time_s, f.frame_ms));
         }
     }
-    if pts.is_empty() {
-        return Ok(());
-    }
-    let t0 = pts[0].0;
-    let t1 = pts[pts.len() - 1].0;
+    if pts.is_empty() { return Ok(()); }
+    let (t0, t1) = axis_range(pts[0].0, pts[pts.len() - 1].0);
     let mut max_ms = 0.0f32;
     for p in &pts {
         if p.1 > max_ms {

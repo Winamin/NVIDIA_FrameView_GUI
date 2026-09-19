@@ -21,6 +21,7 @@ fn build_session(path: &str) -> Result<(Session, Stats), Box<dyn std::error::Err
         cpu: String::new(),
         resolution: String::new(),
         runtime: String::new(),
+        gpu_count: 0,
         frames: Vec::new(),
     };
     csv::load_csv(path, &mut sess)?;

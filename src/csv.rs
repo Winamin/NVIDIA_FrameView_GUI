@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use crate::model::{FrameSample, MAX_CORES, MAX_FRAME_MS, MAX_GPU, Session};
+use crate::model::{FrameSample, MAX_CORES, MAX_FRAME_MS, Session};
 
 fn cell(rec: &csv::StringRecord, idx: usize) -> &str {
     match rec.get(idx) {
@@ -37,20 +37,46 @@ pub fn load_csv(path: &str, sess: &mut Session) -> Result<(), Box<dyn Error>> {
 
     let i_time = col("TimeInSeconds");
     let i_frame = col("MsBetweenPresents");
+
+    // Guard against the wrong FrameView file. `FrameView_Summary.csv` holds one
+    // row per benchmark run and has none of the per-frame columns, so every
+    // sample would parse as NaN, leaving the charts with no data to scale their
+    // axes to (which used to panic inside plotters' key-point search).
+    if i_time == usize::MAX || i_frame == usize::MAX {
+        if col_map.contains_key("Log Name") {
+            return Err("this is a FrameView summary file (one row per benchmark run), \
+                        not a per-frame capture log. Open the file named in its \
+                        `Log Name` column instead (FrameView_<app>_<timestamp>_Log.csv)"
+                .into());
+        }
+        return Err("not a FrameView per-frame capture log: no `TimeInSeconds` / \
+                    `MsBetweenPresents` column in the header"
+            .into());
+    }
     let i_present_api = col("MsInPresentAPI");
     let i_present_latency = col("MsRenderPresentLatency");
     let i_until_displayed = col("MsUntilDisplayed");
     let i_render_queue = col("Render Queue Depth");
     let i_pc_latency = col("MsPCLatency");
 
-    let i_gpu0_util = col("GPU0Util(%)");
-    let i_gpu0_clk = col("GPU0Clk(MHz)");
-    let i_gpu0_mem = col("GPU0MemClk(MHz)");
-    let i_gpu0_temp = col("GPU0Temp(C)");
-    let i_gpu1_util = col("GPU1Util(%)");
-    let i_gpu1_clk = col("GPU1Clk(MHz)");
-    let i_gpu1_mem = col("GPU1MemClk(MHz)");
-    let i_gpu1_temp = col("GPU1Temp(C)");
+    // GPU columns are `GPU{N}Util(%)` / `GPU{N}Clk(MHz)` /
+    // `GPU{N}MemClk(MHz)` / `GPU{N}Temp(C)`, contiguous from 0.
+    // Detect count by scanning the header instead of hardcoding 2.
+    let mut gpu_cols: Vec<(usize, usize, usize, usize)> = Vec::new();
+    for i in 0..16 {
+        let u = col(&format!("GPU{i}Util(%)"));
+        let c = col(&format!("GPU{i}Clk(MHz)"));
+        let m = col(&format!("GPU{i}MemClk(MHz)"));
+        let t = col(&format!("GPU{i}Temp(C)"));
+        if u == usize::MAX && c == usize::MAX && m == usize::MAX && t == usize::MAX {
+            if !gpu_cols.is_empty() {
+                break;
+            }
+            continue;
+        }
+        gpu_cols.push((u, c, m, t));
+    }
+    sess.gpu_count = gpu_cols.len();
 
     let i_cpu_util = col("CPUUtil(%)");
     let i_cpu_clk = col("CPUClk(MHz)");
@@ -93,10 +119,10 @@ pub fn load_csv(path: &str, sess: &mut Session) -> Result<(), Box<dyn Error>> {
             until_displayed_ms: cell_f32(&rec, i_until_displayed),
             render_queue: cell_f32(&rec, i_render_queue),
             pc_latency_ms: cell_f32(&rec, i_pc_latency),
-            gpu_util: [f32::NAN; MAX_GPU],
-            gpu_clk: [f32::NAN; MAX_GPU],
-            gpu_mem_clk: [f32::NAN; MAX_GPU],
-            gpu_temp: [f32::NAN; MAX_GPU],
+            gpu_util: vec![f32::NAN; gpu_cols.len()],
+            gpu_clk: vec![f32::NAN; gpu_cols.len()],
+            gpu_mem_clk: vec![f32::NAN; gpu_cols.len()],
+            gpu_temp: vec![f32::NAN; gpu_cols.len()],
             cpu_util: cell_f32(&rec, i_cpu_util),
             cpu_clk: cell_f32(&rec, i_cpu_clk),
             cpu_temp: cell_f32(&rec, i_cpu_temp),
@@ -118,14 +144,12 @@ pub fn load_csv(path: &str, sess: &mut Session) -> Result<(), Box<dyn Error>> {
             f.frame_ms = f32::NAN;
         }
 
-        f.gpu_util[0] = cell_f32(&rec, i_gpu0_util);
-        f.gpu_clk[0] = cell_f32(&rec, i_gpu0_clk);
-        f.gpu_mem_clk[0] = cell_f32(&rec, i_gpu0_mem);
-        f.gpu_temp[0] = cell_f32(&rec, i_gpu0_temp);
-        f.gpu_util[1] = cell_f32(&rec, i_gpu1_util);
-        f.gpu_clk[1] = cell_f32(&rec, i_gpu1_clk);
-        f.gpu_mem_clk[1] = cell_f32(&rec, i_gpu1_mem);
-        f.gpu_temp[1] = cell_f32(&rec, i_gpu1_temp);
+        for (n, &(u, c, m, t)) in gpu_cols.iter().enumerate() {
+            f.gpu_util[n] = cell_f32(&rec, u);
+            f.gpu_clk[n] = cell_f32(&rec, c);
+            f.gpu_mem_clk[n] = cell_f32(&rec, m);
+            f.gpu_temp[n] = cell_f32(&rec, t);
+        }
 
         sess.frames.push(f);
     }

@@ -37,9 +37,16 @@ pub fn analyze(sess: &Session, st: &mut Stats) {
     }
 
     if n > 1 {
-        st.duration_s = sess.frames[n - 1].time_s - sess.frames[0].time_s;
-        if st.duration_s > 0.0 {
-            st.avg_fps = st.frame_num as f32 / st.duration_s;
+        // Rows can carry `NaN` time (a blank cell, or a log truncated
+        // mid-write), so bound the capture with the first and last *finite*
+        // timestamp instead of the first and last row.
+        let first = sess.frames.iter().map(|f| f.time_s).find(|t| t.is_finite());
+        let last = sess.frames.iter().rev().map(|f| f.time_s).find(|t| t.is_finite());
+        if let (Some(a), Some(b)) = (first, last) {
+            st.duration_s = b - a;
+            if st.duration_s > 0.0 {
+                st.avg_fps = st.frame_num as f32 / st.duration_s;
+            }
         }
     }
 

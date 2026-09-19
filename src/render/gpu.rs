@@ -3,7 +3,7 @@
 use std::error::Error;
 
 use crate::model::*;
-use super::{draw_panel, make_series, padded_range, DArea, PanelOptions, RenderParams};
+use super::{core_color, draw_panel, make_series, padded_range, time_range, DArea, PanelOptions, RenderParams};
 
 pub fn render_gpu_area(
     sess: &Session,
@@ -11,29 +11,71 @@ pub fn render_gpu_area(
     params: &RenderParams,
     area: &DArea<'_>,
 ) -> Result<(), Box<dyn Error>> {
-    let t0 = sess.frames[0].time_s;
-    let t1 = sess.frames[sess.frames.len() - 1].time_s;
+    let (t0, t1) = time_range(sess);
 
-    let u0 = make_series(sess, |f: &FrameSample| f.gpu_util[0], C_SERIES_A, "GPU0");
-    let u1 = make_series(sess, |f: &FrameSample| f.gpu_util[1], C_SERIES_B, "GPU1");
-    let tm0 = make_series(sess, |f: &FrameSample| f.gpu_temp[0], C_SERIES_A, "GPU0");
-    let tm1 = make_series(sess, |f: &FrameSample| f.gpu_temp[1], C_SERIES_B, "GPU1");
-    let ck0 = make_series(sess, |f: &FrameSample| f.gpu_clk[0], C_SERIES_A, "GPU0");
-    let ck1 = make_series(sess, |f: &FrameSample| f.gpu_clk[1], C_SERIES_B, "GPU1");
-    let mk0 = make_series(sess, |f: &FrameSample| f.gpu_mem_clk[0], C_SERIES_A, "GPU0");
-    let mk1 = make_series(sess, |f: &FrameSample| f.gpu_mem_clk[1], C_SERIES_B, "GPU1");
+    // GPU count comes from the CSV header; fall back to the actual row width
+    // in case of a hand-built Session.
+    let n = sess
+        .gpu_count
+        .max(sess.frames.first().map(|f| f.gpu_util.len()).unwrap_or(0));
+
+    let mut utils: Vec<crate::render::Series> = Vec::with_capacity(n);
+    let mut temps: Vec<crate::render::Series> = Vec::with_capacity(n);
+    let mut clks: Vec<crate::render::Series> = Vec::with_capacity(n);
+    let mut mems: Vec<crate::render::Series> = Vec::with_capacity(n);
+    for i in 0..n {
+        let name = format!("GPU{i}");
+        let color = match i {
+            0 => C_SERIES_A,
+            1 => C_SERIES_B,
+            _ => core_color(i, n),
+        };
+        let idx = i;
+        utils.push(make_series(
+            sess,
+            move |f: &FrameSample| f.gpu_util.get(idx).copied().unwrap_or(f32::NAN),
+            color,
+            &name,
+        ));
+        let idx = i;
+        temps.push(make_series(
+            sess,
+            move |f: &FrameSample| f.gpu_temp.get(idx).copied().unwrap_or(f32::NAN),
+            color,
+            &name,
+        ));
+        let idx = i;
+        clks.push(make_series(
+            sess,
+            move |f: &FrameSample| f.gpu_clk.get(idx).copied().unwrap_or(f32::NAN),
+            color,
+            &name,
+        ));
+        let idx = i;
+        mems.push(make_series(
+            sess,
+            move |f: &FrameSample| f.gpu_mem_clk.get(idx).copied().unwrap_or(f32::NAN),
+            color,
+            &name,
+        ));
+    }
 
     let areas = area.split_evenly((2, 2));
     let opts = PanelOptions::default();
 
-    let (y0, y1) = padded_range(&[&u0, &u1], params.y_pad);
-    draw_panel(&areas[0], "GPU Utilization (%)", t0, t1, y0, y1, &[&u0, &u1], params, opts)?;
-    let (y0, y1) = padded_range(&[&tm0, &tm1], params.y_pad);
-    draw_panel(&areas[1], "GPU Temperature (C)", t0, t1, y0, y1, &[&tm0, &tm1], params, opts)?;
-    let (y0, y1) = padded_range(&[&ck0, &ck1], params.y_pad);
-    draw_panel(&areas[2], "GPU Clock (MHz)", t0, t1, y0, y1, &[&ck0, &ck1], params, opts)?;
-    let (y0, y1) = padded_range(&[&mk0, &mk1], params.y_pad);
-    draw_panel(&areas[3], "GPU Memory Clock (MHz)", t0, t1, y0, y1, &[&mk0, &mk1], params, opts)?;
+    let u_refs: Vec<&crate::render::Series> = utils.iter().collect();
+    let t_refs: Vec<&crate::render::Series> = temps.iter().collect();
+    let c_refs: Vec<&crate::render::Series> = clks.iter().collect();
+    let m_refs: Vec<&crate::render::Series> = mems.iter().collect();
+
+    let (y0, y1) = padded_range(&u_refs, params.y_pad);
+    draw_panel(&areas[0], "GPU Utilization (%)", t0, t1, y0, y1, &u_refs, params, opts)?;
+    let (y0, y1) = padded_range(&t_refs, params.y_pad);
+    draw_panel(&areas[1], "GPU Temperature (C)", t0, t1, y0, y1, &t_refs, params, opts)?;
+    let (y0, y1) = padded_range(&c_refs, params.y_pad);
+    draw_panel(&areas[2], "GPU Clock (MHz)", t0, t1, y0, y1, &c_refs, params, opts)?;
+    let (y0, y1) = padded_range(&m_refs, params.y_pad);
+    draw_panel(&areas[3], "GPU Memory Clock (MHz)", t0, t1, y0, y1, &m_refs, params, opts)?;
 
     Ok(())
 }

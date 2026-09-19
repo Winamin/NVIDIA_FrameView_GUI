@@ -18,9 +18,7 @@ pub const IMG_H: u32 = 900;
 /// Height used for the (taller) frame-time chart.
 pub const IMG_H_TALL: u32 = 1050;
 
-// TODO: Auto MAX_GPU
-pub const MAX_GPU: usize = 2;
-
+// GPU count is auto-detected from CSV headers (`GPU{N}Util(%)` etc.).
 /// Maximum number of CPU cores we track (FrameView logs `CPUCoreUtil%[0..63]`).
 pub const MAX_CORES: usize = 64;
 
@@ -47,10 +45,10 @@ pub struct FrameSample {
     pub render_queue: f32,
     #[allow(dead_code)] // kept as part of the parsed CSV model
     pub pc_latency_ms: f32,
-    pub gpu_util: [f32; MAX_GPU],
-    pub gpu_clk: [f32; MAX_GPU],
-    pub gpu_mem_clk: [f32; MAX_GPU],
-    pub gpu_temp: [f32; MAX_GPU],
+    pub gpu_util: Vec<f32>,
+    pub gpu_clk: Vec<f32>,
+    pub gpu_mem_clk: Vec<f32>,
+    pub gpu_temp: Vec<f32>,
     pub cpu_util: f32,
     pub cpu_clk: f32,
     pub cpu_temp: f32,
@@ -65,6 +63,8 @@ pub struct Session {
     pub cpu: String,
     pub resolution: String,
     pub runtime: String,
+    /// Number of GPUs detected from the CSV header (`GPU0..GPU{N}`).
+    pub gpu_count: usize,
     pub frames: Vec<FrameSample>,
 }
 

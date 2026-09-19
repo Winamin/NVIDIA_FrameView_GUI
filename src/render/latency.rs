@@ -2,7 +2,7 @@
 use std::error::Error;
 
 use crate::model::*;
-use super::{draw_panel, make_series, padded_range, DArea, PanelOptions, RenderParams};
+use super::{draw_panel, make_series, padded_range, time_range, DArea, PanelOptions, RenderParams};
 
 pub fn render_latency_area(
     sess: &Session,
@@ -10,8 +10,7 @@ pub fn render_latency_area(
     params: &RenderParams,
     area: &DArea<'_>,
 ) -> Result<(), Box<dyn Error>> {
-    let t0 = sess.frames[0].time_s;
-    let t1 = sess.frames[sess.frames.len() - 1].time_s;
+    let (t0, t1) = time_range(sess);
 
     let pres = make_series(sess, |f: &FrameSample| f.present_latency_ms, C_SERIES_A, "PresentLat");
     let disp = make_series(sess, |f: &FrameSample| f.until_displayed_ms, C_SERIES_B, "UntilDisplayed");
